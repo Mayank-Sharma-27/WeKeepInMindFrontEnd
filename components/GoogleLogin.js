@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { TouchableOpacity, Button, View, Text, StyleSheet } from "react-native";
+import {
+  TouchableOpacity,
+  Button,
+  View,
+  Text,
+  StyleSheet,
+  SafeAreaView,
+} from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -19,7 +26,7 @@ export default function GoogleLogin({ navigation }) {
       "999713381835-nsjkc9v3gudkkungn9pvdbp5bo5jjg60.apps.googleusercontent.com",
     webClientId:
       "999713381835-fog5jamno603lnn175g9buc15bpkfk7v.apps.googleusercontent.com",
-          scopes: ['profile', 'email'],
+    scopes: ["profile", "email"],
     redirectUri: Platform.select({
       web: "http://localhost:8081",
       ios: "com.googleusercontent.apps.999713381835-nsjkc9v3gudkkungn9pvdbp5bo5jjg60:/oauthredirect", // Use the iOS URL Scheme here
@@ -85,45 +92,41 @@ export default function GoogleLogin({ navigation }) {
   console.log(JSON.stringify(userInfo));
 
   return (
-    <View style={styles.container}>
-      {userInfo ? (
-        <Text>Welcome, {userInfo.name}</Text>
-      ) : (
-        <TouchableOpacity
-          style={styles.googleButton}
-          onPress={handleGoogleLogin}
-        >
-          <Text style={styles.buttonText}>Login with Google</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
+        {userInfo ? (
+          <Text>Welcome, {userInfo.name}</Text>
+        ) : (
+          <TouchableOpacity
+            style={styles.googleButton}
+            onPress={handleGoogleLogin}
+          >
+            <Text style={styles.buttonText}>Login with Google</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    justifyContent: "center", // Centers vertically
-    alignItems: "center", // Centers horizontally
-    backgroundColor: "#f5f5f5", // Optional: A light background color for better contrast
+  },
+  container: {
+    justifyContent: "center", // Vertically centers content
+    alignItems: "center", // Horizontally centers content
+    flex: 1,
   },
   googleButton: {
-    backgroundColor: "#4285F4", // Google blue
+    backgroundColor: "#4285F4",
     paddingVertical: 12,
     paddingHorizontal: 25,
     borderRadius: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 5, // Shadow for Android
   },
   buttonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
-    marginLeft: 10,
   },
 });
