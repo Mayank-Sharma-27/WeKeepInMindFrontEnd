@@ -12,11 +12,13 @@ import * as Google from "expo-auth-session/providers/google";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import { makeRedirectUri } from "expo-auth-session";
+import { useNavigation } from "expo-router"; 
 
 WebBrowser.maybeCompleteAuthSession();
 
-export default function GoogleLogin({ navigation }) {
+export default function GoogleLogin() {
   const [userInfo, setUserInfo] = useState(null);
+  const navigation = useNavigation();
   const redirectUri = makeRedirectUri();
   //client IDs from .env
   const config = {
@@ -51,6 +53,8 @@ export default function GoogleLogin({ navigation }) {
       //store user information  in Asyncstorage
       await AsyncStorage.setItem("user", JSON.stringify(user));
       setUserInfo(user);
+
+      await sendUserInfoToBackend(user);
     } catch (error) {
       console.error(
         "Failed to fetch user data:",
@@ -68,10 +72,12 @@ export default function GoogleLogin({ navigation }) {
       if (userJSON) {
         // If user information is found in AsyncStorage, parse it and set it in the state
         setUserInfo(JSON.parse(userJSON));
+        navigateToHome();
       } else if (response?.type === "success") {
         // If no user information is found and the response type is "success" (assuming response is defined),
         // call getUserInfo with the access token from the response
         getUserInfo(response.authentication.accessToken);
+        navigateToHome();
       }
     } catch (error) {
       // Handle any errors that occur during AsyncStorage retrieval or other operations
@@ -79,10 +85,37 @@ export default function GoogleLogin({ navigation }) {
     }
   };
 
+    const navigateToHome = () => {
+      navigation.reset({
+        index: 0,
+        routes: [{ name: "tabs" }], // Assumes "tabs" is your tab navigator
+      });
+    };
+
   //add it to a useEffect with response as a dependency
   useEffect(() => {
     signInWithGoogle();
   }, [response]);
+
+  const sendUserInfoToBackend = async (user) => {
+    try {
+        const response = await fetch("http://localhost:8080/google-login", {
+            method: "POST",
+            headers: {
+               "Content-Type": "application/json", 
+            },
+            body: JSON.stringify({
+                email: user.email,
+                name: user.name
+            }),
+        });
+
+        const data = await response.json();
+        console.log("Response from backend", data);
+    } catch (error) {
+        console.error("Failed to send user info to backend", error)
+    }
+  };
 
   const handleGoogleLogin = async () => {
     promptAsync(); // This triggers the login flow
