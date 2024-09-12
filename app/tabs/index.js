@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet } from "react-native";
+import Reminders from "../../components/Reminders";
 
 export default function Tab() {
   return (
     <View style={styles.container}>
-      <Text>Tab [Home]</Text>
+      <Reminders />
     </View>
   );
 }
