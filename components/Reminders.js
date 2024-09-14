@@ -47,7 +47,7 @@ export default function Reminders() {
     <View style={styles.reminderCard}>
       <Text style={styles.reminderMessage}>{item.reminderMessage}</Text>
       <Text style={styles.reminderSender}>
-        Sent by: {item.reminderSenderUser}
+        Sent by: {item.reminderSenderUserName}
       </Text>
       <Text style={styles.reminderDateTime}>
         {new Date(item.reminderDateTime).toLocaleString()}
