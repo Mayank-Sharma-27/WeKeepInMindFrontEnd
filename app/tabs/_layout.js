@@ -14,9 +14,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="sendreminder"
         options={{
-          title: "Settings",
+          title: "SendReminder",
           tabBarIcon: ({ color }) => (
             <FontAwesome size={28} class="cog" color={color} />
           ),

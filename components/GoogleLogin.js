@@ -12,7 +12,7 @@ import * as Google from "expo-auth-session/providers/google";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
 import { makeRedirectUri } from "expo-auth-session";
-import { useNavigation } from "expo-router"; 
+import { useNavigation } from "expo-router";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -85,12 +85,12 @@ export default function GoogleLogin() {
     }
   };
 
-    const navigateToHome = () => {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: "tabs" }], // Assumes "tabs" is your tab navigator
-      });
-    };
+  const navigateToHome = () => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: "tabs" }], // Assumes "tabs" is your tab navigator
+    });
+  };
 
   //add it to a useEffect with response as a dependency
   useEffect(() => {
@@ -99,21 +99,21 @@ export default function GoogleLogin() {
 
   const sendUserInfoToBackend = async (user) => {
     try {
-        const response = await fetch("http://localhost:8080/google-login", {
-            method: "POST",
-            headers: {
-               "Content-Type": "application/json", 
-            },
-            body: JSON.stringify({
-                email: user.email,
-                name: user.name
-            }),
-        });
+      const response = await fetch("http://10.0.0.54:8080/google-login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: user.email,
+          name: user.name,
+        }),
+      });
 
-        const data = await response.json();
-        console.log("Response from backend", data);
+      const data = await response.json();
+      console.log("Response from backend", data);
     } catch (error) {
-        console.error("Failed to send user info to backend", error)
+      console.error("Failed to send user info to backend", error);
     }
   };
 

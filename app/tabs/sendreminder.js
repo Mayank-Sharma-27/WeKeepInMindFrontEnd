@@ -1,9 +1,10 @@
 import { View, Text, StyleSheet } from "react-native";
+import SendReminder from "../../components/SendReminder";
 
 export default function Tab() {
   return (
     <View style={styles.container}>
-      <Text>Tab Settings</Text>
+      <SendReminder />
     </View>
   );
 }
