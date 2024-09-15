@@ -9,6 +9,8 @@ import {
   TouchableOpacity,
   Pressable,
   Platform,
+  Modal,
+  FlatList,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,7 +22,7 @@ export default function SendReminder() {
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [reminderMessage, setReminderMessage] = useState("");
-  const [reminderDate, setReminderDate] = useState(new Date());
+  const [reminderDate, setReminderDate] = useState("");
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -28,14 +30,32 @@ export default function SendReminder() {
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
+  const [showUserPicker, setShowUserPicker] = useState(false); // State for user picker visibility
+  const [showUserConfirmation, setShowUserConfirmation] = useState(false); // State for user confirmation dialog
+  const [date, setDate] = useState(new Date());
 
   const toggleDatePicker = () => {
     setShowDatePicker(!showDatePicker);
   };
 
-    const toggleGroupPicker = () => {
-      setShowGroupPicker(!showGroupPicker);
-    };
+  const toggleGroupPicker = () => {
+    setShowGroupPicker(!showGroupPicker);
+  };
+
+  const toggleUserPicker = () => {
+    setShowUserPicker(!showUserPicker);
+  };
+
+  const confirmUserSelection = () => {
+    setShowUserConfirmation(false); // Close the confirmation dialog
+    toggleUserPicker(); // Optionally close the picker as well
+  };
+
+  const cancelUserSelection = () => {
+    setSelectedUsers([]); // Clear selected users if canceled
+    setShowUserConfirmation(false); // Close the confirmation dialog
+    toggleUserPicker(); // Optionally close the picker as well
+  };
 
   const confirmIosDate = () => {
     setReminderDate(reminderDate.toDateString());
@@ -43,16 +63,16 @@ export default function SendReminder() {
   };
 
   const onchange = ({ type }, selectedDate) => {
-    if (type == "set") {
-      const currentDate = selectedDate;
-      setReminderDate(currentDate);
-
-      if (Platform.OS === "ios") {
-        toggleDatePicker();
+    const currentDate = selectedDate || tempDate;
+    if (Platform.OS === "android") {
+      if (event.type === "set") {
+        // On Android, set the date immediately if confirmed
         setReminderDate(currentDate.toDateString());
       }
+      setShowDatePicker(false); // Close the picker
     } else {
-      toggleDatePicker();
+      // On iOS, only update the temporary state
+      setReminderDate(currentDate);
     }
   };
 
@@ -114,27 +134,25 @@ export default function SendReminder() {
 
   // Handle group selection
   const handleGroupSelect = (groupId) => {
-    // Find the selected group from the list of groups
     const selectedGroup = groups.find((group) => group.groupId === groupId);
-
-    // Log the selected group name
-    Logger.log(`Selected Group Name: ${selectedGroup?.groupName}`);
-
-    // Log the users in the selected group
-    if (selectedGroup && selectedGroup.groupUsers) {
-      Logger.log(`Users in the selected group:`);
-      selectedGroup.groupUsers.forEach((user) => {
-        Logger.log(`Username: ${user.userName}`);
-      });
-    } else {
-      Logger.log("No users found in the selected group");
-    }
-
-    // Update state or any other actions with the selected group
     setSelectedGroup(selectedGroup);
-    setSelectedUsers([]); // Clear selected users when the group changes
     setUsers(selectedGroup ? selectedGroup.groupUsers : []);
-    setSelectedGroupId(groupId); // Update selected group ID
+    setSelectedGroupId(groupId);
+    setShowGroupPicker(false); // Close the group picker after selection
+    setSelectedUsers([]); // Clear selected users when the group changes
+  };
+
+  // Handle user selection
+  const handleUserSelect = (userId) => {
+    setSelectedUsers((prevSelectedUsers) => {
+      if (prevSelectedUsers.includes(userId)) {
+        // Remove user if already selected
+        return prevSelectedUsers.filter((id) => id !== userId);
+      } else {
+        // Add user if not already selected
+        return [...prevSelectedUsers, userId];
+      }
+    });
   };
 
   // Send reminder
@@ -142,7 +160,7 @@ export default function SendReminder() {
     if (
       !selectedGroup ||
       !reminderMessage ||
-      !reminderDateTime ||
+      !reminderDate ||
       selectedUsers.length === 0
     ) {
       Logger.warn("Please fill all fields.");
@@ -165,7 +183,7 @@ export default function SendReminder() {
           reminderMessage,
           reminderUsers: selectedUsers,
           reminderEditorUsers: [], // Populate if needed
-          reminderDateTime,
+          reminderDateTime: reminderDate,
         }),
       });
 
@@ -197,77 +215,118 @@ export default function SendReminder() {
             <FontAwesome name="refresh" size={28} color="black" />
           </TouchableOpacity>
 
+          {/* Group Picker Button */}
+          <TouchableOpacity
+            onPress={toggleGroupPicker}
+            style={styles.pickerButton}
+          >
+            <Text style={styles.pickerText}>
+              {selectedGroup ? selectedGroup.groupName : "Select group"}
+            </Text>
+          </TouchableOpacity>
+
           {/* Group Picker */}
-          <Picker
-            selectedValue={selectedGroupId}
-            onValueChange={(itemValue) => handleGroupSelect(itemValue)}
-            style={{ marginVertical: 10, flex: 1 }}
-          >
-            <Picker.Item label="Select group" value={null} />
-            {groups.map((group) => (
-              <Picker.Item
-                key={group.groupId}
-                label={group.groupName}
-                value={group.groupId}
-              />
-            ))}
-          </Picker>
-
-          {/* Users Picker */}
-          <Picker
-            selectedValue={selectedUsers.length > 0 ? selectedUsers[0] : null}
-            onValueChange={(itemValue) => setSelectedUsers([itemValue])}
-            style={{ marginVertical: 10, flex: 1 }} // Adjust margin as needed
-            enabled={!!selectedGroup}
-          >
-            <Picker.Item label="Select user" value={null} />
-            {users.map((user) => (
-              <Picker.Item
-                key={user.userId}
-                label={user.userName}
-                value={user.userId}
-              />
-            ))}
-          </Picker>
-
-          <Text> Reminder Date</Text>
-          {showDatePicker && (
-            <DateTimePicker
-              mode="date"
-              display="spinner"
-              value={reminderDate}
-              onchange={onchange}
-              style={{ width: "100%", marginVertical: 10 }}
-            />
+          {showGroupPicker && (
+            <Picker
+              selectedValue={selectedGroupId}
+              onValueChange={(itemValue) => handleGroupSelect(itemValue)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Select group" value="" />
+              {groups.map((group) => (
+                <Picker.Item
+                  key={group.groupId}
+                  label={group.groupName}
+                  value={group.groupId}
+                />
+              ))}
+            </Picker>
           )}
 
-          {showDatePicker && Platform.OS === "ios" && (
-            <View
-              style={{ flexDirection: "row", justifyContent: "space-around" }}
-            >
-              <TouchableOpacity onPress={toggleDatePicker}>
-                <Text>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={confirmIosDate}>
-                <Text>Confirm</Text>
-              </TouchableOpacity>
+          {/* User Picker Button */}
+          <TouchableOpacity
+            onPress={toggleUserPicker}
+            style={styles.pickerButton}
+            disabled={!selectedGroup}
+          >
+            <Text style={styles.pickerText}>
+              {selectedUsers.length > 0
+                ? `Selected ${selectedUsers.length} user(s)`
+                : "Select users"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* User Picker */}
+          {showUserPicker && (
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue=""
+                onValueChange={(itemValue) => handleUserSelect(itemValue)}
+                style={styles.picker}
+                mode="dropdown"
+              >
+                <Picker.Item label="Select user" value="" />
+                {users.map((user) => (
+                  <Picker.Item
+                    key={user.userId}
+                    label={user.userName}
+                    value={user.userId}
+                  />
+                ))}
+              </Picker>
+              {/* Confirmation Dialog for Users */}
+              <View style={styles.confirmationButtons}>
+                <TouchableOpacity onPress={cancelUserSelection}>
+                  <Text>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmUserSelection}>
+                  <Text>Confirm</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
-          {!showDatePicker && (
-            <Pressable onPress={toggleDatePicker}>
-              <TextInput
-                style={styles.input}
-                placeholder="Select Date"
-                value={reminderDate}
-                onChangeText={setReminderDate}
-                editable={false}
-                onPressIn={toggleDatePicker}
-                editable={false}
-                onPressIn={toggleDatePicker}
+          <View>
+            <Text>Reminder Date</Text>
+            {showDatePicker && (
+              <DateTimePicker
+                mode="date"
+                display="spinner"
+                value={date}
+                onChange={onchange}
+                style={{ width: "100%", marginVertical: 10 }}
               />
-            </Pressable>
-          )}
+            )}
+
+            {showDatePicker && Platform.OS === "ios" && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-around",
+                }}
+              >
+                <TouchableOpacity onPress={toggleDatePicker}>
+                  <Text>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmIosDate}>
+                  <Text>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!showDatePicker && (
+              <Pressable onPress={toggleDatePicker}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Select Date"
+                  value={reminderDate}
+                  editable={false}
+                  onChangeText={setReminderDate}
+                  onPressIn={toggleDatePicker}
+                />
+              </Pressable>
+            )}
+          </View>
 
           <TextInput
             style={styles.input}
@@ -292,7 +351,7 @@ const styles = StyleSheet.create({
     justifyContent: "center", // Align items to the center vertically
   },
   picker: {
-    height: 50, // Adjusted height for better appearance
+    height: 150, // Adjusted height for better appearance
     marginVertical: 10,
     width: "100%", // Ensure picker takes full width
   },
@@ -307,15 +366,25 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginVertical: 10,
   },
-  datePickerButton: {
+  pickerButton: {
     padding: 10,
     backgroundColor: "#f0f0f0",
     borderRadius: 5,
     marginVertical: 10,
     alignItems: "center", // Center the content inside the button
   },
-  datePickerText: {
+  pickerText: {
     fontSize: 16,
     color: "#333",
+  },
+  pickerContainer: {
+    marginVertical: 10,
+    borderWidth: 1,
+    borderColor: "gray",
+  },
+  confirmationButtons: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    padding: 10,
   },
 });
