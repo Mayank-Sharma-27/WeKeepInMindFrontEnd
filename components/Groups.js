@@ -12,6 +12,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import Logger from "./Logger";
+import { useRouter } from "expo-router";
 
 export default function Groups() {
   const [groups, setGroups] = useState([]);
@@ -19,6 +20,7 @@ export default function Groups() {
   const [error, setError] = useState(null);
   const navigation = useNavigation();
   const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     const fetchGroups = async () => {
@@ -55,13 +57,14 @@ export default function Groups() {
   };
 
   const renderGroup = ({ item }) => {
-   return ( <TouchableOpacity
-      style={styles.groupItem}
-      onPress={() => navigation.navigate("GroupDetails", { groupId: item.groupId })}
-    >
-      <Text style={styles.groupName}>{item.groupName}</Text>
-    </TouchableOpacity>
-   );
+    return (
+      <TouchableOpacity
+        style={styles.groupItem}
+        onPress={() => router.push(`/tabs/groups/${item.groupId}`)} // Dynamic navigation with groupId
+      >
+        <Text style={styles.groupName}>{item.groupName}</Text>
+      </TouchableOpacity>
+    );
   };
 
   if (loading) {

@@ -7,7 +7,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { useRoute } from "@react-navigation/native";
-import Logger from "../../components/Logger"; // Import your logger
+import Logger from "./Logger"; // Import your logger
 
 export default function GroupDetails() {
   const [reminders, setReminders] = useState([]);
@@ -16,6 +16,7 @@ export default function GroupDetails() {
 
   const route = useRoute(); // Get route parameters
   const { groupId } = route.params; // Get the passed groupId
+  Logger.log(`Group id ${groupId}`);
 
   useEffect(() => {
     const fetchReminders = async () => {
@@ -25,9 +26,10 @@ export default function GroupDetails() {
         );
 
         const data = await response.json();
-        setReminders(data.reminders); // Assuming the API returns an array of reminders
+        Logger.log(`data ${JSON.stringify(data)}`);
+        setReminders(data.upcomingReminders); // Assuming the API returns an array of reminders
         Logger.log(
-          `Fetched ${data.reminders.length} reminders for group ${groupId}`
+          `Fetched ${data.upcomingReminders.length} reminders for group ${groupId}`
         );
         setLoading(false);
       } catch (err) {
@@ -55,8 +57,15 @@ export default function GroupDetails() {
         keyExtractor={(item) => item.reminderId.toString()}
         renderItem={({ item }) => (
           <View style={styles.reminderItem}>
-            <Text style={styles.reminderText}>Reminder: {item.message}</Text>
-            <Text style={styles.reminderText}>Time: {item.time}</Text>
+            <Text style={styles.reminderText}>
+              Message: {item.reminderMessage}
+            </Text>
+            <Text style={styles.reminderText}>
+              Sender: {item.reminderSenderUser?.userName || "Unknown"}
+            </Text>
+            <Text style={styles.reminderText}>
+              Reminder Time: {new Date(item.reminderDateTime).toLocaleString()}
+            </Text>
           </View>
         )}
       />
