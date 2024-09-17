@@ -1,5 +1,9 @@
 import { Stack } from "expo-router";
 
 export default function GroupsLayout() {
-  return <Stack />;
+  return (
+    <Stack
+      screenOptions={{ tabBarActiveTintColor: "blue", headerShown: false }}
+    />
+  );
 }
