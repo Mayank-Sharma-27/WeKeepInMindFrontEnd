@@ -57,7 +57,7 @@ export default function Groups() {
   const renderGroup = ({ item }) => {
    return ( <TouchableOpacity
       style={styles.groupItem}
-      onPress={() => navigation.navigate("GroupDetails", { groupId: item.id })}
+      onPress={() => navigation.navigate("GroupDetails", { groupId: item.groupId })}
     >
       <Text style={styles.groupName}>{item.groupName}</Text>
     </TouchableOpacity>
