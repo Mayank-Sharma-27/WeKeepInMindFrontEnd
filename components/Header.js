@@ -5,38 +5,61 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  Button,
+  TouchableWithoutFeedback,
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function Header() {
-  const [modalVisible, setModalVisible] = useState(false);
+  const insets = useSafeAreaInsets(); // Get safe area insets (e.g., on iPhone with notches)
+  const [dropdownVisible, setDropdownVisible] = useState(false);
 
-  const openMenu = () => setModalVisible(true);
-  const closeMenu = () => setModalVisible(false);
+  const toggleDropdown = () => setDropdownVisible(!dropdownVisible);
+  const closeDropdown = () => setDropdownVisible(false);
 
   return (
-    <View style={styles.headerContainer}>
+    <View style={[styles.headerContainer, { paddingTop: insets.top + 15 }]}>
       <Text style={styles.title}>WeKeepInMind</Text>
-      <TouchableOpacity>
+
+      {/* Three dots (menu button) */}
+      <TouchableOpacity onPress={toggleDropdown}>
         <FontAwesome name="ellipsis-v" size={24} color="black" />
       </TouchableOpacity>
 
+      {/* Dropdown as Modal */}
       <Modal
         transparent={true}
-        animationType="slide"
-        visible={modalVisible}
-        onRequestClose={closeMenu}
+        visible={dropdownVisible}
+        animationType="fade"
+        onRequestClose={closeDropdown}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Button title="Profile" onPress={() => {}} />
-            <Button title="Subscription" onPress={() => {}} />
-            <Button title="Settings" onPress={() => {}} />
-            <Button title="Sign Out" onPress={() => {}} />
-            <Button title="Close" onPress={closeMenu} />
+        <TouchableWithoutFeedback onPress={closeDropdown}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View
+                style={[
+                  styles.dropdownMenu,
+                  {
+                    top: insets.top + 60, // Use insets to position dropdown below header
+                  },
+                ]}
+              >
+                <TouchableOpacity style={styles.dropdownItem}>
+                  <Text>Profile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.dropdownItem}>
+                  <Text>Subscription</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.dropdownItem}>
+                  <Text>Settings</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.dropdownItem}>
+                  <Text>Sign Out</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
@@ -44,27 +67,37 @@ export default function Header() {
 
 const styles = StyleSheet.create({
   headerContainer: {
-    flexDirection: "row", // Display in a row
-    justifyContent: "space-between", // Space between title and button
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingHorizontal: 15,
-    paddingVertical: 10,
-    paddingTop: 40,
     backgroundColor: "#f8f8f8",
-    alignItems: "center", // Center vertically
+    alignItems: "center",
   },
   title: {
     fontSize: 20,
     fontWeight: "bold",
   },
-  modalContainer: {
+  modalOverlay: {
     flex: 1,
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-start",
+    backgroundColor: "rgba(0, 0, 0, 0.1)", // Slightly darken the background
   },
-  modalContent: {
+  dropdownMenu: {
+    position: "absolute",
+    right: 15, // Align dropdown with the ellipsis icon
     backgroundColor: "white",
-    margin: 20,
-    padding: 20,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5, // For Android shadow
+  },
+  dropdownItem: {
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ccc",
   },
 });

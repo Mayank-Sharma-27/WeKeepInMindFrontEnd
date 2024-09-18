@@ -23,19 +23,26 @@ export default function SendReminder() {
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [reminderMessage, setReminderMessage] = useState("");
   const [reminderDate, setReminderDate] = useState("");
+  const [reminderTime, setReminderTime] = useState("");
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [users, setUsers] = useState([]);
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showGroupPicker, setShowGroupPicker] = useState(false);
   const [showUserPicker, setShowUserPicker] = useState(false); // State for user picker visibility
   const [showUserConfirmation, setShowUserConfirmation] = useState(false); // State for user confirmation dialog
   const [date, setDate] = useState(new Date());
+  const [time, setTime] = useState(new Date());
 
   const toggleDatePicker = () => {
     setShowDatePicker(!showDatePicker);
+  };
+
+  const toggleTimePicker = () => {
+    setShowTimePicker(!showTimePicker);
   };
 
   const toggleGroupPicker = () => {
@@ -62,17 +69,40 @@ export default function SendReminder() {
     toggleDatePicker();
   };
 
-  const onchange = ({ type }, selectedDate) => {
-    const currentDate = selectedDate || tempDate;
+  const confirmIosTime = () => {
+    const formattedTime = time.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+    setReminderDate(`${reminderDate} ${formattedTime}`);
+    toggleTimePicker();
+  };
+
+  const onchangeDate = (event, selectedDate) => {
+    const currentDate = selectedDate || date;
+    setDate(currentDate);
     if (Platform.OS === "android") {
       if (event.type === "set") {
-        // On Android, set the date immediately if confirmed
         setReminderDate(currentDate.toDateString());
       }
-      setShowDatePicker(false); // Close the picker
-    } else {
-      // On iOS, only update the temporary state
-      setReminderDate(currentDate);
+      setShowDatePicker(false);
+    }
+  };
+
+  const onchangeTime = (event, selectedTime) => {
+    const currentTime = selectedTime || time;
+    setTime(currentTime);
+    if (Platform.OS === "android") {
+      if (event.type === "set") {
+        const formattedTime = currentTime.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+        setReminderDate(`${reminderDate} ${formattedTime}`);
+      }
+      setShowTimePicker(false);
     }
   };
 
@@ -116,7 +146,7 @@ export default function SendReminder() {
                   Logger.log(`User: ${user.userName}`);
                 });
               } else {
-                Logger.warn(`No users found for group: ${group.groupName}`);
+                Logger.log(`No users found for group: ${group.groupName}`);
               }
             });
           }
@@ -129,6 +159,7 @@ export default function SendReminder() {
       Logger.error("Error fetching groups:", error);
     } finally {
       setRefreshing(false);
+      setLoading(false);
     }
   };
 
@@ -155,12 +186,32 @@ export default function SendReminder() {
     });
   };
 
+  const handleDateChange = (event, selectedDate) => {
+    const currentDate = selectedDate || date;
+    setShowDatePicker(false);
+    setDate(currentDate);
+    setReminderDate(currentDate.toDateString()); // Set the reminder date
+  };
+
+  const handleTimeChange = (event, selectedTime) => {
+    const currentTime = selectedTime || time;
+    setShowTimePicker(false);
+    setTime(currentTime);
+    const formattedTime = currentTime.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+    setReminderTime(formattedTime); // Set the reminder time in AM/PM format
+  };
+
   // Send reminder
   const handleSendReminder = async () => {
     if (
       !selectedGroup ||
       !reminderMessage ||
       !reminderDate ||
+      !reminderTime || // Ensure time is selected
       selectedUsers.length === 0
     ) {
       Logger.warn("Please fill all fields.");
@@ -183,7 +234,7 @@ export default function SendReminder() {
           reminderMessage,
           reminderUsers: selectedUsers,
           reminderEditorUsers: [], // Populate if needed
-          reminderDateTime: reminderDate,
+          reminderDateTime: `${reminderDate} ${reminderTime}`, // Combine date and time
         }),
       });
 
@@ -201,7 +252,7 @@ export default function SendReminder() {
   };
 
   useEffect(() => {
-    loadGroupsFromLocalStorage();
+    fetchGroups();
   }, []);
 
   return (
@@ -211,9 +262,9 @@ export default function SendReminder() {
       ) : (
         <>
           {/* FontAwesome Refresh Icon */}
-          <TouchableOpacity onPress={fetchGroups} style={styles.refreshIcon}>
+          {/* <TouchableOpacity onPress={fetchGroups} style={styles.refreshIcon}>
             <FontAwesome name="refresh" size={28} color="black" />
-          </TouchableOpacity>
+          </TouchableOpacity> */}
 
           {/* Group Picker Button */}
           <TouchableOpacity
@@ -293,7 +344,7 @@ export default function SendReminder() {
                 mode="date"
                 display="spinner"
                 value={date}
-                onChange={onchange}
+                onChange={handleDateChange}
                 style={{ width: "100%", marginVertical: 10 }}
               />
             )}
@@ -323,6 +374,48 @@ export default function SendReminder() {
                   editable={false}
                   onChangeText={setReminderDate}
                   onPressIn={toggleDatePicker}
+                />
+              </Pressable>
+            )}
+          </View>
+
+          <View>
+            <Text>Reminder Time</Text>
+            {showTimePicker && (
+              <DateTimePicker
+                mode="date"
+                display="spinner"
+                value={time}
+                onChange={handleTimeChange}
+                style={{ width: "100%", marginVertical: 10 }}
+              />
+            )}
+
+            {showTimePicker && Platform.OS === "ios" && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-around",
+                }}
+              >
+                <TouchableOpacity onPress={toggleTimePicker}>
+                  <Text>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmIosTime}>
+                  <Text>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!showTimePicker && (
+              <Pressable onPress={toggleTimePicker}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Select Time"
+                  value={reminderTime}
+                  editable={false}
+                  onChangeText={setReminderTime}
+                  onPressIn={toggleTimePicker}
                 />
               </Pressable>
             )}
