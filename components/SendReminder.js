@@ -65,7 +65,7 @@ export default function SendReminder() {
   };
 
   const confirmIosDate = () => {
-    setReminderDate(reminderDate.toDateString());
+    setReminderDate(date.toDateString());
     toggleDatePicker();
   };
 
@@ -75,7 +75,8 @@ export default function SendReminder() {
       minute: "2-digit",
       hour12: true,
     });
-    setReminderDate(`${reminderDate} ${formattedTime}`);
+    //setReminderDate(`${reminderDate} ${formattedTime}`);
+    setReminderTime(time.toLocaleTimeString());
     toggleTimePicker();
   };
 
@@ -184,13 +185,6 @@ export default function SendReminder() {
         return [...prevSelectedUsers, userId];
       }
     });
-  };
-
-  const handleDateChange = (event, selectedDate) => {
-    const currentDate = selectedDate || date;
-    setShowDatePicker(false);
-    setDate(currentDate);
-    setReminderDate(currentDate.toDateString()); // Set the reminder date
   };
 
   const handleTimeChange = (event, selectedTime) => {
@@ -344,7 +338,7 @@ export default function SendReminder() {
                 mode="date"
                 display="spinner"
                 value={date}
-                onChange={handleDateChange}
+                onChange={onchangeDate}
                 style={{ width: "100%", marginVertical: 10 }}
               />
             )}
@@ -383,10 +377,10 @@ export default function SendReminder() {
             <Text>Reminder Time</Text>
             {showTimePicker && (
               <DateTimePicker
-                mode="date"
+                mode="time"
                 display="spinner"
                 value={time}
-                onChange={handleTimeChange}
+                onChange={onchangeTime}
                 style={{ width: "100%", marginVertical: 10 }}
               />
             )}

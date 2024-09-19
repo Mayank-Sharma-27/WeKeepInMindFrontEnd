@@ -9,13 +9,21 @@ import {
 } from "react-native";
 import { FontAwesome } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Signout from "./Signout";
 
 export default function Header() {
   const insets = useSafeAreaInsets(); // Get safe area insets (e.g., on iPhone with notches)
   const [dropdownVisible, setDropdownVisible] = useState(false);
+  const [signOutTriggered, setSignOutTriggered] = useState(false);
 
   const toggleDropdown = () => setDropdownVisible(!dropdownVisible);
   const closeDropdown = () => setDropdownVisible(false);
+
+  const handleSignOut = () => {
+    // Trigger the sign-out process by setting state
+    setSignOutTriggered(true);
+    closeDropdown();
+  };
 
   return (
     <View style={[styles.headerContainer, { paddingTop: insets.top + 15 }]}>
@@ -53,7 +61,10 @@ export default function Header() {
                 <TouchableOpacity style={styles.dropdownItem}>
                   <Text>Settings</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.dropdownItem}>
+                <TouchableOpacity
+                  style={styles.dropdownItem}
+                  onPress={handleSignOut}
+                >
                   <Text>Sign Out</Text>
                 </TouchableOpacity>
               </View>
@@ -61,6 +72,7 @@ export default function Header() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+      {signOutTriggered && <Signout />}
     </View>
   );
 }
