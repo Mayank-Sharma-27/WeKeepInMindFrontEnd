@@ -11,6 +11,7 @@ import {
   Platform,
   Modal,
   FlatList,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -174,15 +175,27 @@ export default function SendReminder() {
     setSelectedUsers([]); // Clear selected users when the group changes
   };
 
-  // Handle user selection
-  const handleUserSelect = (userId) => {
+  const handleUserSelect = (user) => {
     setSelectedUsers((prevSelectedUsers) => {
-      if (prevSelectedUsers.includes(userId)) {
+      // Ensure user is an object
+      const userObject = typeof user === "string" ? JSON.parse(user) : user;
+
+      const isUserSelected = prevSelectedUsers.some(
+        (u) =>
+          (typeof u === "string" ? JSON.parse(u).userId : u.userId) ===
+          userObject.userId
+      );
+
+      if (isUserSelected) {
         // Remove user if already selected
-        return prevSelectedUsers.filter((id) => id !== userId);
+        return prevSelectedUsers.filter(
+          (u) =>
+            (typeof u === "string" ? JSON.parse(u).userId : u.userId) !==
+            userObject.userId
+        );
       } else {
         // Add user if not already selected
-        return [...prevSelectedUsers, userId];
+        return [...prevSelectedUsers, userObject];
       }
     });
   };
@@ -216,6 +229,24 @@ export default function SendReminder() {
       const userData = await AsyncStorage.getItem("user");
       const userObject = JSON.parse(userData);
       const userEmail = userObject.email;
+      const usersend = selectedUsers[0];
+      const length = selectedUsers.length;
+      Logger.log(`${length}`);
+      Logger.log(`selectedUsers type: ${typeof selectedUsers}`);
+      Logger.log(`selectedUsers length: ${selectedUsers.length}`);
+      Logger.log(`First selected user type: ${typeof selectedUsers[0]}`);
+      Logger.log(
+        `All selected users: ${JSON.stringify(selectedUsers, null, 2)}`
+      );
+      const reminderDateTime = new Date(
+        `${reminderDate} ${reminderTime}`
+      ).toISOString();
+
+      const reminderUsers = selectedUsers.map((user) => ({
+        userId: user.userId,
+        userEmail: user.userEmail,
+        userName: user.userName,
+      }));
 
       const response = await fetch("http://10.0.0.54:8080/send-reminder", {
         method: "POST",
@@ -224,11 +255,11 @@ export default function SendReminder() {
         },
         body: JSON.stringify({
           groupId: selectedGroup.groupId,
-          reminderSenderUser: { userEmail },
+          reminderSenderUser: userObject,
           reminderMessage,
-          reminderUsers: selectedUsers,
+          reminderUsers: reminderUsers,
           reminderEditorUsers: [], // Populate if needed
-          reminderDateTime: `${reminderDate} ${reminderTime}`, // Combine date and time
+          reminderDateTime: reminderDateTime, // Combine date and time
         }),
       });
 
@@ -250,182 +281,188 @@ export default function SendReminder() {
   }, []);
 
   return (
-    <View style={styles.container}>
-      {loading ? (
-        <ActivityIndicator size="large" color="#0000ff" />
-      ) : (
-        <>
-          {/* FontAwesome Refresh Icon */}
-          {/* <TouchableOpacity onPress={fetchGroups} style={styles.refreshIcon}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.container}
+    >
+      <View style={styles.container}>
+        {loading ? (
+          <ActivityIndicator size="large" color="#0000ff" />
+        ) : (
+          <>
+            {/* FontAwesome Refresh Icon */}
+            {/* <TouchableOpacity onPress={fetchGroups} style={styles.refreshIcon}>
             <FontAwesome name="refresh" size={28} color="black" />
           </TouchableOpacity> */}
 
-          {/* Group Picker Button */}
-          <TouchableOpacity
-            onPress={toggleGroupPicker}
-            style={styles.pickerButton}
-          >
-            <Text style={styles.pickerText}>
-              {selectedGroup ? selectedGroup.groupName : "Select group"}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Group Picker */}
-          {showGroupPicker && (
-            <Picker
-              selectedValue={selectedGroupId}
-              onValueChange={(itemValue) => handleGroupSelect(itemValue)}
-              style={styles.picker}
+            {/* Group Picker Button */}
+            <TouchableOpacity
+              onPress={toggleGroupPicker}
+              style={styles.pickerButton}
             >
-              <Picker.Item label="Select group" value="" />
-              {groups.map((group) => (
-                <Picker.Item
-                  key={group.groupId}
-                  label={group.groupName}
-                  value={group.groupId}
-                />
-              ))}
-            </Picker>
-          )}
+              <Text style={styles.pickerText}>
+                {selectedGroup ? selectedGroup.groupName : "Select group"}
+              </Text>
+            </TouchableOpacity>
 
-          {/* User Picker Button */}
-          <TouchableOpacity
-            onPress={toggleUserPicker}
-            style={styles.pickerButton}
-            disabled={!selectedGroup}
-          >
-            <Text style={styles.pickerText}>
-              {selectedUsers.length > 0
-                ? `Selected ${selectedUsers.length} user(s)`
-                : "Select users"}
-            </Text>
-          </TouchableOpacity>
-
-          {/* User Picker */}
-          {showUserPicker && (
-            <View style={styles.pickerContainer}>
+            {/* Group Picker */}
+            {showGroupPicker && (
               <Picker
-                selectedValue=""
-                onValueChange={(itemValue) => handleUserSelect(itemValue)}
+                selectedValue={selectedGroupId}
+                onValueChange={(itemValue) => handleGroupSelect(itemValue)}
                 style={styles.picker}
-                mode="dropdown"
               >
-                <Picker.Item label="Select user" value="" />
-                {users.map((user) => (
+                <Picker.Item label="Select group" value="" />
+                {groups.map((group) => (
                   <Picker.Item
-                    key={user.userId}
-                    label={user.userName}
-                    value={user.userId}
+                    key={group.groupId}
+                    label={group.groupName}
+                    value={group.groupId}
                   />
                 ))}
               </Picker>
-              {/* Confirmation Dialog for Users */}
-              <View style={styles.confirmationButtons}>
-                <TouchableOpacity onPress={cancelUserSelection}>
-                  <Text>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={confirmUserSelection}>
-                  <Text>Confirm</Text>
-                </TouchableOpacity>
+            )}
+
+            {/* User Picker Button */}
+            <TouchableOpacity
+              onPress={toggleUserPicker}
+              style={styles.pickerButton}
+              disabled={!selectedGroup}
+            >
+              <Text style={styles.pickerText}>
+                {selectedUsers.length > 0
+                  ? `Selected ${selectedUsers.length} user(s): ${selectedUsers
+                      .map((u) => u.userName)
+                      .join(", ")}`
+                  : "Select users"}
+              </Text>
+            </TouchableOpacity>
+            {/* User Picker */}
+            {showUserPicker && (
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue=""
+                  onValueChange={(itemValue) => handleUserSelect(itemValue)}
+                  style={styles.picker}
+                  mode="dropdown"
+                >
+                  <Picker.Item label="Select user" value="" />
+                  {users.map((user) => (
+                    <Picker.Item
+                      key={user.userId}
+                      label={user.userName}
+                      value={JSON.stringify(user)}
+                    />
+                  ))}
+                </Picker>
+                {/* Confirmation Dialog for Users */}
+                <View style={styles.confirmationButtons}>
+                  <TouchableOpacity onPress={cancelUserSelection}>
+                    <Text>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={confirmUserSelection}>
+                    <Text>Confirm</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
+            )}
+
+            <View>
+              <Text>Reminder Date</Text>
+              {showDatePicker && (
+                <DateTimePicker
+                  mode="date"
+                  display="spinner"
+                  value={date}
+                  onChange={onchangeDate}
+                  style={{ width: "100%", marginVertical: 10 }}
+                />
+              )}
+
+              {showDatePicker && Platform.OS === "ios" && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-around",
+                  }}
+                >
+                  <TouchableOpacity onPress={toggleDatePicker}>
+                    <Text>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={confirmIosDate}>
+                    <Text>Confirm</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {!showDatePicker && (
+                <Pressable onPress={toggleDatePicker}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Select Date"
+                    value={reminderDate}
+                    editable={false}
+                    onChangeText={setReminderDate}
+                    onPressIn={toggleDatePicker}
+                  />
+                </Pressable>
+              )}
             </View>
-          )}
 
-          <View>
-            <Text>Reminder Date</Text>
-            {showDatePicker && (
-              <DateTimePicker
-                mode="date"
-                display="spinner"
-                value={date}
-                onChange={onchangeDate}
-                style={{ width: "100%", marginVertical: 10 }}
-              />
-            )}
-
-            {showDatePicker && Platform.OS === "ios" && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-around",
-                }}
-              >
-                <TouchableOpacity onPress={toggleDatePicker}>
-                  <Text>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={confirmIosDate}>
-                  <Text>Confirm</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {!showDatePicker && (
-              <Pressable onPress={toggleDatePicker}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Select Date"
-                  value={reminderDate}
-                  editable={false}
-                  onChangeText={setReminderDate}
-                  onPressIn={toggleDatePicker}
+            <View>
+              <Text>Reminder Time</Text>
+              {showTimePicker && (
+                <DateTimePicker
+                  mode="time"
+                  display="spinner"
+                  value={time}
+                  onChange={onchangeTime}
+                  style={{ width: "100%", marginVertical: 10 }}
                 />
-              </Pressable>
-            )}
-          </View>
+              )}
 
-          <View>
-            <Text>Reminder Time</Text>
-            {showTimePicker && (
-              <DateTimePicker
-                mode="time"
-                display="spinner"
-                value={time}
-                onChange={onchangeTime}
-                style={{ width: "100%", marginVertical: 10 }}
-              />
-            )}
+              {showTimePicker && Platform.OS === "ios" && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-around",
+                  }}
+                >
+                  <TouchableOpacity onPress={toggleTimePicker}>
+                    <Text>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={confirmIosTime}>
+                    <Text>Confirm</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
 
-            {showTimePicker && Platform.OS === "ios" && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-around",
-                }}
-              >
-                <TouchableOpacity onPress={toggleTimePicker}>
-                  <Text>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={confirmIosTime}>
-                  <Text>Confirm</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+              {!showTimePicker && (
+                <Pressable onPress={toggleTimePicker}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Select Time"
+                    value={reminderTime}
+                    editable={false}
+                    onChangeText={setReminderTime}
+                    onPressIn={toggleTimePicker}
+                  />
+                </Pressable>
+              )}
+            </View>
 
-            {!showTimePicker && (
-              <Pressable onPress={toggleTimePicker}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Select Time"
-                  value={reminderTime}
-                  editable={false}
-                  onChangeText={setReminderTime}
-                  onPressIn={toggleTimePicker}
-                />
-              </Pressable>
-            )}
-          </View>
+            <TextInput
+              style={styles.reminderInput}
+              placeholder="Reminder Message"
+              value={reminderMessage}
+              onChangeText={setReminderMessage}
+            />
 
-          <TextInput
-            style={styles.input}
-            placeholder="Reminder Message"
-            value={reminderMessage}
-            onChangeText={setReminderMessage}
-          />
-
-          <Button title="Send Reminder" onPress={handleSendReminder} />
-        </>
-      )}
-    </View>
+            <Button title="Send Reminder" onPress={handleSendReminder} />
+          </>
+        )}
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -449,6 +486,15 @@ const styles = StyleSheet.create({
     marginVertical: 10,
     paddingHorizontal: 10,
   },
+
+  reminderInput: {
+    height: 120,
+    borderColor: "gray",
+    borderWidth: 1,
+    marginVertical: 10,
+    paddingHorizontal: 10,
+  },
+
   refreshIcon: {
     alignSelf: "center",
     marginVertical: 10,
