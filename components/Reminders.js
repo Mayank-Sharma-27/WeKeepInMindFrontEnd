@@ -44,7 +44,22 @@ export default function Reminders() {
       const storedReminders = await AsyncStorage.getItem("reminders");
       Logger.log("Fetched reminders :", storedReminders);
       if (storedReminders) {
-        setReminders(JSON.parse(storedReminders));
+        const parsedReminders = JSON.parse(storedReminders);
+        const currentTime = new Date();
+
+        const activeReminders = parsedReminders.filter((reminder) => {
+          const reminiderTime = new Date(reminder.reminderDateTime);
+          return reminderTime > currentTime;
+        });
+        setReminders(activeReminders);
+
+        if (activeReminders.length !== parsedReminders.length) {
+          await AsyncStorage.setItem(
+            "reminders",
+            JSON.stringify(activeReminders)
+          );
+          Logger.log("Removed expired reminders from storage");
+        }
       } else {
         // If no reminders are found in local storage, initialize with an empty array
         setReminders([]);
@@ -178,6 +193,7 @@ export default function Reminders() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    width: "100%",
     padding: 20,
     backgroundColor: "#f5f5f5",
   },
