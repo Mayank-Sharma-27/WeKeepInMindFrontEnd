@@ -92,4 +92,28 @@ const scheduleNotifications = async (reminders) => {
   }
 };
 
-export { scheduleNotifications };
+const showImmediateNotification = async (title, body) => {
+  const status = await requestPermissions();
+
+  if (status) {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: title,
+          body: body,
+          sound: true,
+        },
+        trigger: null,
+      });
+      Logger.log("Immediate notifications shown successfully");
+    } catch (error) {
+      Logger.error("Error showing immediate notification:", error);
+    }
+  } else {
+    Logger.warn(
+      "Notification permission not granted for immediate notification"
+    );
+  }
+};
+
+export { scheduleNotifications, showImmediateNotification };

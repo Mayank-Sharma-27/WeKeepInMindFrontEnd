@@ -12,6 +12,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import Logger from "./Logger"; // Adjust the path as needed
 import { scheduleNotifications } from "./Notification";
+import messaging from "@react-native-firebase/messaging";
 
 const { height } = Dimensions.get("window");
 const TOP_MARGIN = height * 0.05; // 5% of the screen height
@@ -143,12 +144,89 @@ export default function Reminders() {
 
   useEffect(() => {
     loadRemindersFromLocalStorage();
+    setupFCM();
   }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchReminders();
   }, []);
+
+  const setupFCM = async () => {
+    try {
+      await messaging().registerDeviceForRemoteMessages();
+      const token = await messaging().getToken();
+      await updateFCMToken(token);
+
+      const unsubscribe = messaging().onTokenRefresh(async (newToken) => {
+        await updateFCMToken(newToken);
+      });
+
+      // Set up a listener for incoming messages when the app is in the foreground
+      const messageUnsubscribe = messaging().onMessage(
+        async (remoteMessage) => {
+          Logger.log("Received FCM message:", remoteMessage);
+          // Handle the incoming message (e.g., add it to the reminders list)
+          await handleIncomingReminder(remoteMessage);
+        }
+      );
+
+      return () => {
+        unsubscribe();
+        messageUnsubscribe();
+      };
+    } catch (error) {
+      Logger.error("Error setting up FCM:", error);
+    }
+  };
+
+  const updateFCMToken = async (token) => {
+    try {
+      const userData = await AsyncStorage.getItem("user");
+      if (userData) {
+        const userObject = JSON.parse(userData);
+        const response = await fetch("http://10.0.0.54:8080/update-fcm-token", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            userId: userObject.email,
+            fcmToken: token,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error("Failed to update FCM token");
+        }
+        Logger.log("FCM token updated successfully");
+      }
+    } catch (error) {
+      Logger.error("Error updating FCM token:", error);
+    }
+  };
+
+  const handleIncomingReminder = async (remoteMessage) => {
+    // Extract reminder data from the message
+    const newReminder = remoteMessage.data;
+
+    // Add the new reminder to the state and local storage
+    setReminders((prevReminders) => [...prevReminders, newReminder]);
+
+    // Update AsyncStorage
+    const storedReminders = JSON.parse(
+      (await AsyncStorage.getItem("reminders")) || "[]"
+    );
+    await AsyncStorage.setItem(
+      "reminders",
+      JSON.stringify([...storedReminders, newReminder])
+    );
+
+    // Schedule a notification for the new reminder
+    await scheduleNotifications([newReminder]);
+
+    // Optionally, show an alert or toast to inform the user
+    Alert.alert("New Reminder", "You have received a new reminder!");
+  };
 
   const renderReminder = ({ item }) => (
     <View style={styles.reminderCard}>
