@@ -11,7 +11,10 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import Logger from "./Logger"; // Adjust the path as needed
-import { scheduleNotifications } from "./Notification";
+import {
+  scheduleNotifications,
+  showImmediateNotification,
+} from "./Notification";
 import messaging from "@react-native-firebase/messaging";
 
 const { height } = Dimensions.get("window");
@@ -225,7 +228,10 @@ export default function Reminders() {
     await scheduleNotifications([newReminder]);
 
     // Optionally, show an alert or toast to inform the user
-    Alert.alert("New Reminder", "You have received a new reminder!");
+    await showImmediateNotification(
+      "New Reminder",
+      "You have received a new reminder!"
+    );
   };
 
   const renderReminder = ({ item }) => (
