@@ -14,20 +14,14 @@ import Logger from "./Logger"; // Adjust the path as needed
 import {
   scheduleNotifications,
   showImmediateNotification,
+  registerForPushNotificationsAsync,
+  addNotificationListeners,
+  removeNotificationListeners,
+  sendPushTokenToBackend,
 } from "./Notification";
-import messaging from "@react-native-firebase/messaging";
 
 const { height } = Dimensions.get("window");
 const TOP_MARGIN = height * 0.05; // 5% of the screen height
-
-// Configure notification handling
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
 
 export default function Reminders() {
   const [reminders, setReminders] = useState([]);
@@ -39,40 +33,6 @@ export default function Reminders() {
     const reminderTimestamp = new Date(reminderDateTime).toISOString();
 
     return `${reminderSenderUserName}-${userEmail}-${reminderTimestamp}`;
-  };
-
-  // Fetch reminders from local storage on component load
-  const loadRemindersFromLocalStorage = async () => {
-    try {
-      Logger.log("Fetching reminders");
-      const storedReminders = await AsyncStorage.getItem("reminders");
-      Logger.log("Fetched reminders :", storedReminders);
-      if (storedReminders) {
-        const parsedReminders = JSON.parse(storedReminders);
-        const currentTime = new Date();
-
-        const activeReminders = parsedReminders.filter((reminder) => {
-          const reminiderTime = new Date(reminder.reminderDateTime);
-          return reminderTime > currentTime;
-        });
-        setReminders(activeReminders);
-
-        if (activeReminders.length !== parsedReminders.length) {
-          await AsyncStorage.setItem(
-            "reminders",
-            JSON.stringify(activeReminders)
-          );
-          Logger.log("Removed expired reminders from storage");
-        }
-      } else {
-        // If no reminders are found in local storage, initialize with an empty array
-        setReminders([]);
-      }
-      setLoading(false);
-    } catch (error) {
-      Logger.error("Error loading reminders from local storage:", error);
-      setLoading(false);
-    }
   };
 
   const fetchReminders = async () => {
@@ -146,8 +106,31 @@ export default function Reminders() {
   };
 
   useEffect(() => {
-    loadRemindersFromLocalStorage();
-    setupFCM();
+    registerForPushNotificationsAsync().then((token) => {
+      setExpoPushToken(token);
+      if (token) {
+        sendPushTokenToBackend(token);
+      }
+    });
+
+    notificationListeners.current = addNotificationListeners(
+      (notification) => {
+        Logger.log("Notification received:", notification);
+        handleIncomingReminder(notification);
+      },
+      (response) => {
+        Logger.log("Notification response received:", response);
+        // Handle notification response (e.g., when user taps on the notification)
+      }
+    );
+
+    fetchReminders();
+
+    return () => {
+      if (notificationListeners.current) {
+        removeNotificationListeners(notificationListeners.current);
+      }
+    };
   }, []);
 
   const onRefresh = useCallback(() => {
@@ -155,82 +138,14 @@ export default function Reminders() {
     fetchReminders();
   }, []);
 
-  const setupFCM = async () => {
-    try {
-      await messaging().registerDeviceForRemoteMessages();
-      const token = await messaging().getToken();
-      await updateFCMToken(token);
-
-      const unsubscribe = messaging().onTokenRefresh(async (newToken) => {
-        await updateFCMToken(newToken);
-      });
-
-      // Set up a listener for incoming messages when the app is in the foreground
-      const messageUnsubscribe = messaging().onMessage(
-        async (remoteMessage) => {
-          Logger.log("Received FCM message:", remoteMessage);
-          // Handle the incoming message (e.g., add it to the reminders list)
-          await handleIncomingReminder(remoteMessage);
-        }
-      );
-
-      return () => {
-        unsubscribe();
-        messageUnsubscribe();
-      };
-    } catch (error) {
-      Logger.error("Error setting up FCM:", error);
-    }
-  };
-
-  const updateFCMToken = async (token) => {
-    try {
-      const userData = await AsyncStorage.getItem("user");
-      if (userData) {
-        const userObject = JSON.parse(userData);
-        const response = await fetch("http://10.0.0.54:8080/update-fcm-token", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            userId: userObject.email,
-            fcmToken: token,
-          }),
-        });
-        if (!response.ok) {
-          throw new Error("Failed to update FCM token");
-        }
-        Logger.log("FCM token updated successfully");
-      }
-    } catch (error) {
-      Logger.error("Error updating FCM token:", error);
-    }
-  };
-
   const handleIncomingReminder = async (remoteMessage) => {
     // Extract reminder data from the message
     const newReminder = remoteMessage.data;
 
-    // Add the new reminder to the state and local storage
-    setReminders((prevReminders) => [...prevReminders, newReminder]);
-
-    // Update AsyncStorage
-    const storedReminders = JSON.parse(
-      (await AsyncStorage.getItem("reminders")) || "[]"
-    );
-    await AsyncStorage.setItem(
-      "reminders",
-      JSON.stringify([...storedReminders, newReminder])
-    );
-
-    // Schedule a notification for the new reminder
-    await scheduleNotifications([newReminder]);
-
     // Optionally, show an alert or toast to inform the user
     await showImmediateNotification(
       "New Reminder",
-      "You have received a new reminder!"
+      `New reminder: ${newReminder.reminderMessage}`
     );
   };
 

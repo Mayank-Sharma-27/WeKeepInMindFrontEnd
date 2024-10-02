@@ -1,6 +1,7 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Tabs } from "expo-router";
 import Header from "../../components/Header";
+import * as Notifications from "expo-notifications";
 
 export default function TabLayout() {
   return (
@@ -10,7 +11,7 @@ export default function TabLayout() {
         screenOptions={{ tabBarActiveTintColor: "blue", headerShown: false }}
       >
         <Tabs.Screen
-          name="index"
+          name="home"
           options={{
             title: "Home",
             tabBarIcon: ({ color }) => (
