@@ -1,6 +1,9 @@
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Logger from "./Logger"; // Adjust the path as needed
+import * as Device from "expo-device";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 // Set up the notification handler
 Notifications.setNotificationHandler({
@@ -119,35 +122,63 @@ const showImmediateNotification = async (title, body) => {
 const registerForPushNotificationsAsync = async () => {
   let token;
 
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("default", {
-      name: "default",
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: "#FF231F7C",
+  try {
+    Logger.log("Starting registerForPushNotificationsAsync...");
+
+    if (!Device.isDevice) {
+      Logger.warn(
+        "Push notifications don't work on simulators/emulators. Use a physical device."
+      );
+      return;
+    }
+
+    Logger.log("Checking notification permissions...");
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
+    Logger.log("Existing permission status:", existingStatus);
+
+    let finalStatus = existingStatus;
+    if (existingStatus !== "granted") {
+      Logger.log("Requesting notification permissions...");
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+      Logger.log("New permission status:", finalStatus);
+    }
+
+    if (finalStatus !== "granted") {
+      Logger.warn("Failed to get push token for push notification!");
+      return;
+    }
+
+    Logger.log("Getting Expo push token...");
+    console.log("Project ID:", Constants.expoConfig.extra.eas.projectId);
+    const tokenObject = await Notifications.getExpoPushTokenAsync({
+      projectId: Constants.expoConfig.extra.eas.projectId,
     });
+
+    const token = tokenObject.data;
+    Logger.log(`Expo Push Token: ${token}`);
+
+    if (Platform.OS === "android") {
+      Notifications.setNotificationChannelAsync("default", {
+        name: "default",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#FF231F7C",
+      });
+    }
+
+    return token;
+  } catch (error) {
+    Logger.error(
+      `Error in registerForPushNotificationsAsync: ${error.message}`
+    );
+    Logger.error(`Error stack: ${error.stack}`);
+    if (error.stack) {
+      Logger.error("Error stack:", error.stack);
+    }
+    return null;
   }
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== "granted") {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== "granted") {
-    Logger.warn("Failed to get push token for push notification!");
-    return;
-  }
-
-  token = (await Notifications.getExpoPushTokenAsync()).data;
-  Logger.log("Expo Push Token:", token);
-
-  // Store the token in AsyncStorage
-  await AsyncStorage.setItem("expoPushToken", token);
-
-  return token;
 };
 
 // Add notification listeners
@@ -188,15 +219,20 @@ const sendPushTokenToBackend = async (token) => {
       const userObject = JSON.parse(userData);
       const userEmail = userObject.email;
 
-      // Replace with your actual API endpoint
+      const storedToken = await AsyncStorage.getItem("expoPushToken");
+      if (storedToken === token) {
+        Logger.log("Token already sent to backend");
+        return;
+      }
+
       const response = await fetch("http://10.0.0.54:8080/update-push-token", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userEmail: userEmail,
-          pushToken: token,
+          email: userEmail, // Matches the 'email' field in UpdateTokenRequest
+          token: token, // Matches the 'token' field in UpdateTokenRequest
         }),
       });
 
@@ -204,7 +240,20 @@ const sendPushTokenToBackend = async (token) => {
         throw new Error("Failed to update push token on server");
       }
 
-      Logger.log("Push token updated on server successfully");
+      Logger.log(`Backend response status: ${response.status}`);
+      const responseData = await response.json();
+      Logger.log(`Backend response data:`, JSON.stringify(responseData));
+
+      if (responseData.statusCode === 200) {
+        if (responseData.message === "USER_UPDATED") {
+          await AsyncStorage.setItem("expoPushToken", token);
+          Logger.log("Push token updated on server successfully");
+        } else if (responseData.message === "USER_DOES_NOT_EXISTS") {
+          Logger.warn("User does not exist on the server");
+        }
+      } else {
+        Logger.error("Unexpected response from server:", responseData);
+      }
     }
   } catch (error) {
     Logger.error("Error sending token to backend:", error);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Button,
+  TouchableOpacity,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
@@ -27,6 +28,10 @@ export default function Reminders() {
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const notificationListeners = useRef(null);
+  const [activeTab, setActiveTab] = useState("upcoming");
+  const [sentReminders, setSentReminders] = useState([]);
+  const [expoPushToken, setExpoPushToken] = useState(null);
 
   const generateId = (reminder, userEmail) => {
     const { reminderSenderUserName, reminderDateTime } = reminder;
@@ -46,17 +51,19 @@ export default function Reminders() {
 
         if (userEmail) {
           Logger.log(`Fetching reminders for user: ${userEmail}`);
-          const response = await fetch(
+          const upcomingResponse = await fetch(
             `http://10.0.0.54:8080/get-by-user?userId=${userEmail}`
           );
-          const data = await response.json();
+          const upcomingData = await upcomingResponse.json();
           Logger.log("Reminders fetched successfully.");
 
           // Generate ids for the fetched reminders
-          const remindersWithIds = data.reminders.map((reminder) => ({
-            ...reminder,
-            id: generateId(reminder, userEmail),
-          }));
+          const upcomingRemindersWithIds = upcomingData.reminders.map(
+            (reminder) => ({
+              ...reminder,
+              id: generateId(reminder, userEmail),
+            })
+          );
 
           // Retrieve existing reminders from AsyncStorage
           const storedReminders = JSON.parse(
@@ -69,28 +76,30 @@ export default function Reminders() {
           );
 
           // Filter out existing reminders to avoid duplication
-          const newReminders = remindersWithIds.filter(
+          const newReminders = upcomingRemindersWithIds.filter(
             (reminder) => !existingRemindersMap.has(reminder.id)
           );
 
-          if (newReminders.length > 0) {
-            // Update state with new reminders
-            setReminders((prevReminders) => [
-              ...prevReminders,
-              ...newReminders,
-            ]);
+          // Update state with all reminders (new and existing)
+          setReminders([...storedReminders, ...newReminders]);
+          // Save new reminders to AsyncStorage
+          await AsyncStorage.setItem(
+            "reminders",
+            JSON.stringify([...storedReminders, ...newReminders])
+          );
 
-            // Save new reminders to AsyncStorage
-            await AsyncStorage.setItem(
-              "reminders",
-              JSON.stringify([...storedReminders, ...newReminders])
-            );
+          // Schedule notifications for new reminders
+          await scheduleNotifications(newReminders);
 
-            // Schedule notifications for new reminders
-            await scheduleNotifications(newReminders);
-          } else {
-            Logger.log("No new reminders to add.");
-          }
+          const sentResponse = await fetch(
+            `http://10.0.0.54:8080/get-sent-reminders?userId=${userEmail}`
+          );
+          const sentData = await sentResponse.json();
+          const sentRemindersWithIds = sentData.reminders.map((reminder) => ({
+            ...reminder,
+            id: generateId(reminder, userEmail),
+          }));
+          setSentReminders(sentRemindersWithIds);
         } else {
           Logger.warn("User email not found.");
         }
@@ -105,13 +114,64 @@ export default function Reminders() {
     }
   };
 
-  useEffect(() => {
-    registerForPushNotificationsAsync().then((token) => {
-      setExpoPushToken(token);
-      if (token) {
-        sendPushTokenToBackend(token);
+  const checkAndUpdatePushToken = async (newToken) => {
+    try {
+      const storedToken = await AsyncStorage.getItem("expoPushToken");
+
+      if (storedToken !== newToken) {
+        await AsyncStorage.setItem("expoPushToken", newToken);
+        await sendPushTokenToBackend(newToken);
+        Logger.log("Push token updated and sent to backend");
+      } else {
+        Logger.log("Push token already up to date");
       }
-    });
+    } catch (error) {
+      Logger.error("Error checking and updating push token:", error);
+    }
+  };
+
+  const setupNotifications = async () => {
+    try {
+      Logger.log("Starting to set up notifications...");
+
+      Logger.log("Checking notification permissions...");
+      const { status: existingStatus } =
+        await Notifications.getPermissionsAsync();
+      Logger.log("Existing notification permission status:", existingStatus);
+
+      let finalStatus = existingStatus;
+      if (existingStatus !== "granted") {
+        Logger.log("Requesting notification permissions...");
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+        Logger.log("New notification permission status:", finalStatus);
+      }
+
+      if (finalStatus !== "granted") {
+        Logger.warn("Notification permissions not granted");
+        return;
+      }
+
+      Logger.log("Registering for push notifications...");
+      const token = await registerForPushNotificationsAsync();
+      Logger.log("Push token received:", token);
+
+      if (token) {
+        setExpoPushToken(token);
+        await checkAndUpdatePushToken(token);
+      } else {
+        Logger.warn("Failed to get push token");
+      }
+    } catch (error) {
+      Logger.error("Error setting up notifications:", error);
+      if (error.stack) {
+        Logger.error("Error stack:", error.stack);
+      }
+    }
+  };
+
+  useEffect(() => {
+    setupNotifications();
 
     notificationListeners.current = addNotificationListeners(
       (notification) => {
@@ -174,11 +234,39 @@ export default function Reminders() {
     );
   }
 
+  const TabBar = () => (
+    <View style={styles.tabBar}>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === "upcoming" && styles.activeTab]}
+        onPress={() => setActiveTab("upcoming")}
+      >
+        <Text
+          style={[
+            styles.tabText,
+            activeTab === "upcoming" && styles.activeTabText,
+          ]}
+        >
+          Upcoming
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === "sent" && styles.activeTab]}
+        onPress={() => setActiveTab("sent")}
+      >
+        <Text
+          style={[styles.tabText, activeTab === "sent" && styles.activeTabText]}
+        >
+          Sent
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      <Button title="Refresh Reminders" onPress={fetchReminders} />
+      <TabBar />
       <FlatList
-        data={reminders}
+        data={activeTab === "upcoming" ? reminders : sentReminders}
         keyExtractor={keyExtractor}
         renderItem={renderReminder}
         onRefresh={onRefresh}
@@ -229,5 +317,28 @@ const styles = StyleSheet.create({
   },
   flatListContent: {
     paddingTop: TOP_MARGIN,
+  },
+  tabBar: {
+    flexDirection: "row",
+    marginBottom: 10,
+    borderRadius: 5,
+    overflow: "hidden",
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    backgroundColor: "#e0e0e0",
+  },
+  activeTab: {
+    backgroundColor: "#007AFF",
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  activeTabText: {
+    color: "#fff",
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,9 +8,11 @@ import {
   StyleSheet,
   Platform,
   RefreshControl,
+  Button,
+  StatusBar,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import Logger from "./Logger";
 import { useRouter } from "expo-router";
 
@@ -22,50 +24,51 @@ export default function Groups() {
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    const fetchGroups = async () => {
-      try {
-        const userData = await AsyncStorage.getItem("user");
-        if (userData) {
-          const userObject = JSON.parse(userData);
-          const userEmail = userObject.email;
+  const fetchGroups = useCallback(async () => {
+    try {
+      setLoading(true);
+      const userData = await AsyncStorage.getItem("user");
+      if (userData) {
+        const userObject = JSON.parse(userData);
+        const userEmail = userObject.email;
 
-          if (userEmail) {
-            const response = await fetch(
-              `http://10.0.0.54:8080/get-groups-by-user?userId=${userEmail}`
-            );
+        if (userEmail) {
+          const response = await fetch(
+            `http://10.0.0.54:8080/get-groups-by-user?userId=${userEmail}`
+          );
 
-            const data = await response.json();
-            setGroups(data.groups);
-            Logger.log(`Groups returned ${data.groups.length}`);
-            setLoading(false);
-          }
+          const data = await response.json();
+          setGroups(data.groups);
+          Logger.log(`Groups returned ${data.groups.length}`);
         }
-      } catch (err) {
-        setError(err.message);
-        setLoading(false);
       }
-    };
-    fetchGroups();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  // Function to handle pull-to-refresh
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchGroups(); // Re-fetch the groups
-    setRefreshing(false);
-  };
+  useFocusEffect(
+    useCallback(() => {
+      fetchGroups();
+    }, [fetchGroups])
+  );
 
-  const renderGroup = ({ item }) => {
-    return (
-      <TouchableOpacity
-        style={styles.groupItem}
-        onPress={() => router.push(`/tabs/groups/${item.groupId}`)} // Dynamic navigation with groupId
-      >
-        <Text style={styles.groupName}>{item.groupName}</Text>
-      </TouchableOpacity>
-    );
-  };
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchGroups();
+  }, [fetchGroups]);
+
+  const renderGroup = ({ item }) => (
+    <TouchableOpacity
+      style={styles.groupItem}
+      onPress={() => router.push(`/tabs/groups/${item.groupId}`)}
+    >
+      <Text style={styles.groupName}>{item.groupName}</Text>
+    </TouchableOpacity>
+  );
 
   if (loading) {
     return <ActivityIndicator size="large" color="#0000ff" />;
@@ -77,15 +80,33 @@ export default function Groups() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Your Groups</Text>
-      <FlatList
-        data={groups}
-        renderItem={renderGroup}
-        keyExtractor={(item) => item.groupId.toString()}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      />
+      <View style={styles.header}>
+        <Text style={styles.title}>Groups</Text>
+        <Button
+          title="Create"
+          onPress={() => router.push("/tabs/groups/create")}
+        />
+      </View>
+      {groups.length > 0 ? (
+        <FlatList
+          data={groups}
+          renderItem={renderGroup}
+          keyExtractor={(item) => item.groupId.toString()}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        />
+      ) : (
+        <View style={styles.noGroupsContainer}>
+          <Text style={styles.noGroupsText}>
+            You are not part of any groups.
+          </Text>
+          <Button
+            title="Create Group"
+            onPress={() => router.push("/tabs/groups/create")}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -113,5 +134,25 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: "red",
+  },
+  noGroupsContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  noGroupsText: {
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    marginBottom: 10,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 'bold',
   },
 });

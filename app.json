@@ -22,13 +22,25 @@
       },
       "package": "com.wekeepinmind"
     },
-     "scheme": "com.googleusercontent.apps.999713381835-nsjkc9v3gudkkungn9pvdbp5bo5jjg60",
+    "scheme": "com.googleusercontent.apps.999713381835-nsjkc9v3gudkkungn9pvdbp5bo5jjg60",
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router"
-    ]
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "color": "#ffffff"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bb167e01-acac-4184-b88d-b24910a6ee63"
+      }
+    },
+    "owner": "mayank2796"
   }
 }

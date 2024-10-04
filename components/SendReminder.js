@@ -12,12 +12,16 @@ import {
   Modal,
   FlatList,
   KeyboardAvoidingView,
+  Switch,
+  ScrollView,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Logger from "./Logger"; // Adjust the path as needed
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { CheckBox } from "react-native-elements";
+import { useRouter } from "expo-router";
 
 export default function SendReminder() {
   const [groups, setGroups] = useState([]);
@@ -37,6 +41,8 @@ export default function SendReminder() {
   const [showUserConfirmation, setShowUserConfirmation] = useState(false); // State for user confirmation dialog
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState(new Date());
+
+  const router = useRouter();
 
   const toggleDatePicker = () => {
     setShowDatePicker(!showDatePicker);
@@ -97,30 +103,9 @@ export default function SendReminder() {
     setTime(currentTime);
     if (Platform.OS === "android") {
       if (event.type === "set") {
-        const formattedTime = currentTime.toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        });
-        setReminderDate(`${reminderDate} ${formattedTime}`);
+        setReminderTime(currentTime.toLocaleTimeString());
       }
       setShowTimePicker(false);
-    }
-  };
-
-  // Fetch groups from local storage
-  const loadGroupsFromLocalStorage = async () => {
-    try {
-      const storedGroups = await AsyncStorage.getItem("groups");
-      if (storedGroups) {
-        setGroups(JSON.parse(storedGroups));
-      } else {
-        setGroups([]);
-      }
-      setLoading(false);
-    } catch (error) {
-      Logger.error("Error loading groups from local storage:", error);
-      setLoading(false);
     }
   };
 
@@ -140,21 +125,17 @@ export default function SendReminder() {
           const data = await response.json();
           Logger.log(`Data from the group: ${JSON.stringify(data.groups)}`);
 
-          if (data.groups) {
-            data.groups.forEach((group) => {
-              if (group.groupUsers && Array.isArray(group.groupUsers)) {
-                Logger.log(`Group: ${group.groupName}`);
-                group.groupUsers.forEach((user) => {
-                  Logger.log(`User: ${user.userName}`);
-                });
-              } else {
-                Logger.log(`No users found for group: ${group.groupName}`);
-              }
-            });
-          }
+          if (data.groups && Array.isArray(data.groups)) {
+            setGroups(data.groups);
+            Logger.log(`Groups set: ${JSON.stringify(data.groups)}`);
 
-          await AsyncStorage.setItem("groups", JSON.stringify(data.groups));
-          setGroups(data.groups);
+            if (data.groups.length === 1) {
+              handleGroupSelect(data.groups[0].groupId);
+            }
+          } else {
+            Logger.log("No groups found or groups is not an array");
+            setGroups([]);
+          }
         }
       }
     } catch (error) {
@@ -167,35 +148,30 @@ export default function SendReminder() {
 
   // Handle group selection
   const handleGroupSelect = (groupId) => {
+    Logger.log(`Handling group selection for groupId: ${groupId}`);
     const selectedGroup = groups.find((group) => group.groupId === groupId);
-    setSelectedGroup(selectedGroup);
-    setUsers(selectedGroup ? selectedGroup.groupUsers : []);
-    setSelectedGroupId(groupId);
-    setShowGroupPicker(false); // Close the group picker after selection
-    setSelectedUsers([]); // Clear selected users when the group changes
+    if (selectedGroup) {
+      Logger.log(`Selected group: ${JSON.stringify(selectedGroup)}`);
+      setSelectedGroup(selectedGroup);
+      setSelectedGroupId(groupId);
+    } else {
+      Logger.log(`No group found with id: ${groupId}`);
+      setSelectedGroup(null);
+      setSelectedGroupId(null);
+    }
+    setShowGroupPicker(false);
+    setSelectedUsers([]);
   };
 
   const handleUserSelect = (user) => {
     setSelectedUsers((prevSelectedUsers) => {
-      // Ensure user is an object
-      const userObject = typeof user === "string" ? JSON.parse(user) : user;
-
       const isUserSelected = prevSelectedUsers.some(
-        (u) =>
-          (typeof u === "string" ? JSON.parse(u).userId : u.userId) ===
-          userObject.userId
+        (u) => u.userId === user.userId
       );
-
       if (isUserSelected) {
-        // Remove user if already selected
-        return prevSelectedUsers.filter(
-          (u) =>
-            (typeof u === "string" ? JSON.parse(u).userId : u.userId) !==
-            userObject.userId
-        );
+        return prevSelectedUsers.filter((u) => u.userId !== user.userId);
       } else {
-        // Add user if not already selected
-        return [...prevSelectedUsers, userObject];
+        return [...prevSelectedUsers, user];
       }
     });
   };
@@ -218,7 +194,7 @@ export default function SendReminder() {
       !selectedGroup ||
       !reminderMessage ||
       !reminderDate ||
-      !reminderTime || // Ensure time is selected
+      !reminderTime ||
       selectedUsers.length === 0
     ) {
       Logger.warn("Please fill all fields.");
@@ -226,43 +202,79 @@ export default function SendReminder() {
     }
 
     try {
+      Logger.log("Starting to send reminder...");
+
       const userData = await AsyncStorage.getItem("user");
-      const userObject = JSON.parse(userData);
-      const userEmail = userObject.email;
-      const usersend = selectedUsers[0];
-      const length = selectedUsers.length;
-      Logger.log(`${length}`);
-      Logger.log(`selectedUsers type: ${typeof selectedUsers}`);
-      Logger.log(`selectedUsers length: ${selectedUsers.length}`);
-      Logger.log(`First selected user type: ${typeof selectedUsers[0]}`);
+      if (!userData) {
+        throw new Error("User data not found in AsyncStorage");
+      }
+      Logger.log("User data retrieved from AsyncStorage");
+
+      let userObject = JSON.parse(userData);
+      Logger.log("User data parsed successfully");
+
+      Logger.log("Preparing reminder data...");
+
       Logger.log(
-        `All selected users: ${JSON.stringify(selectedUsers, null, 2)}`
+        `reminderDate: ${reminderDate}, reminderTime: ${reminderTime}`
       );
-      const reminderDateTime = new Date(
-        `${reminderDate} ${reminderTime}`
-      ).toISOString();
 
-      const reminderUsers = selectedUsers.map((user) => ({
-        userId: user.userId,
-        userEmail: user.userEmail,
-        userName: user.userName,
-      }));
+      const dateObj = new Date(reminderDate);
 
+      const [time, period] = reminderTime.split(" ");
+
+      const [hours, minutes, seconds] = time.split(":");
+
+      dateObj.setHours(
+        period === "PM" ? (parseInt(hours) % 12) + 12 : parseInt(hours) % 12,
+        parseInt(minutes),
+        parseInt(seconds)
+      );
+      // Combine date and time strings
+      const reminderDateTime = dateObj;
+
+      Logger.log(`reminderDateTime created: ${reminderDateTime}`);
+
+      if (isNaN(reminderDateTime.getTime())) {
+        throw new Error(`Invalid date/time: ${dateTimeString}`);
+      }
+      const isoDateTime = reminderDateTime.toISOString();
+      Logger.log(`Reminder date/time (ISO): ${isoDateTime}`);
+
+      Logger.log(`Selected users: ${JSON.stringify(selectedUsers)}`);
+      const reminderUsers = selectedUsers.map((user) => {
+        Logger.log(`Processing user: ${JSON.stringify(user)}`);
+        if (!user.userId || !user.userEmail || !user.userName) {
+          throw new Error(`Invalid user data: ${JSON.stringify(user)}`);
+        }
+        return {
+          userId: user.userId,
+          userEmail: user.userEmail,
+          userName: user.userName,
+        };
+      });
+      Logger.log(`Reminder users processed: ${JSON.stringify(reminderUsers)}`);
+
+      const requestBody = {
+        groupId: selectedGroup.groupId,
+        reminderSenderUser: userObject,
+        reminderMessage,
+        reminderUsers: reminderUsers,
+        reminderEditorUsers: [],
+        reminderDateTime: isoDateTime,
+      };
+      Logger.log("Request body prepared:", JSON.stringify(requestBody));
+
+      Logger.log("Sending POST request to server...");
       const response = await fetch("http://10.0.0.54:8080/send-reminder", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          groupId: selectedGroup.groupId,
-          reminderSenderUser: userObject,
-          reminderMessage,
-          reminderUsers: reminderUsers,
-          reminderEditorUsers: [], // Populate if needed
-          reminderDateTime: reminderDateTime, // Combine date and time
-        }),
+        body: JSON.stringify(requestBody),
       });
 
+      Logger.log("Received response from server. Parsing JSON...");
       const data = await response.json();
       Logger.log("Reminder response:", data);
 
@@ -272,7 +284,8 @@ export default function SendReminder() {
         Logger.warn("Failed to send reminder:", data.responseMessage);
       }
     } catch (error) {
-      Logger.error("Error sending reminder:", error);
+      Logger.error("Error sending reminder:", error.message);
+      Logger.error("Error stack:", error.stack);
     }
   };
 
@@ -280,188 +293,245 @@ export default function SendReminder() {
     fetchGroups();
   }, []);
 
+  useEffect(() => {
+    if (groups.length === 1) {
+      Logger.log(`Auto-selecting the only group: ${groups[0].groupId}`);
+      handleGroupSelect(groups[0].groupId);
+    }
+  }, [groups]);
+
+  useEffect(() => {
+    Logger.log(`Selected group updated: ${JSON.stringify(selectedGroup)}`);
+    if (selectedGroup) {
+      if (Array.isArray(selectedGroup.groupUsers)) {
+        setUsers(selectedGroup.groupUsers);
+        Logger.log(
+          `Users set from selected group: ${JSON.stringify(
+            selectedGroup.groupUsers
+          )}`
+        );
+      } else if (
+        typeof selectedGroup.groupUsers === "object" &&
+        selectedGroup.groupUsers !== null
+      ) {
+        const usersArray = Object.values(selectedGroup.groupUsers);
+        setUsers(usersArray);
+        Logger.log(
+          `Users set from selected group (converted from object): ${JSON.stringify(
+            usersArray
+          )}`
+        );
+      } else {
+        setUsers([]);
+        Logger.log(
+          "No users found in the selected group or groupUsers is not in the expected format"
+        );
+      }
+    }
+  }, [selectedGroup]);
+
+  const UserItem = ({ user, isSelected, onSelect }) => (
+    <View style={styles.userItem}>
+      <Text>{user.userName}</Text>
+      <Switch value={isSelected} onValueChange={() => onSelect(user)} />
+    </View>
+  );
+
+  const navigateToCreateGroup = () => {
+    router.push('/tabs/groups/create');
+  };
+
+  if (loading) {
+    return <ActivityIndicator size="large" color="#0000ff" />;
+  }
+
+  if (groups.length === 0) {
+    return (
+      <View style={styles.noGroupsContainer}>
+        <Text style={styles.noGroupsText}>You are not part of any groups.</Text>
+        <Button
+          title="Create Group"
+          onPress={navigateToCreateGroup}
+        />
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
-      <View style={styles.container}>
-        {loading ? (
-          <ActivityIndicator size="large" color="#0000ff" />
-        ) : (
-          <>
-            {/* FontAwesome Refresh Icon */}
-            {/* <TouchableOpacity onPress={fetchGroups} style={styles.refreshIcon}>
-            <FontAwesome name="refresh" size={28} color="black" />
-          </TouchableOpacity> */}
-
-            {/* Group Picker Button */}
-            <TouchableOpacity
-              onPress={toggleGroupPicker}
-              style={styles.pickerButton}
-            >
-              <Text style={styles.pickerText}>
-                {selectedGroup ? selectedGroup.groupName : "Select group"}
+      <ScrollView contentContainerStyle={styles.scrollViewContent}>
+        <View style={styles.container}>
+          {/* Group Selection */}
+          {groups.length > 0 && (
+            <View style={styles.groupSection}>
+              <Text style={styles.sectionTitle}>
+                Group: {groups.length === 1 ? groups[0].groupName : ""}
               </Text>
-            </TouchableOpacity>
+              {groups.length > 1 && (
+                <>
+                  <TouchableOpacity
+                    onPress={toggleGroupPicker}
+                    style={styles.pickerButton}
+                  >
+                    <Text style={styles.pickerText}>
+                      {selectedGroup
+                        ? selectedGroup.groupName
+                        : "Select group"}
+                    </Text>
+                  </TouchableOpacity>
 
-            {/* Group Picker */}
-            {showGroupPicker && (
-              <Picker
-                selectedValue={selectedGroupId}
-                onValueChange={(itemValue) => handleGroupSelect(itemValue)}
-                style={styles.picker}
-              >
-                <Picker.Item label="Select group" value="" />
-                {groups.map((group) => (
-                  <Picker.Item
-                    key={group.groupId}
-                    label={group.groupName}
-                    value={group.groupId}
+                  {showGroupPicker && (
+                    <Picker
+                      selectedValue={selectedGroupId}
+                      onValueChange={(itemValue) =>
+                        handleGroupSelect(itemValue)
+                      }
+                      style={styles.picker}
+                    >
+                      <Picker.Item label="Select group" value="" />
+                      {groups.map((group) => (
+                        <Picker.Item
+                          key={group.groupId}
+                          label={group.groupName}
+                          value={group.groupId}
+                        />
+                      ))}
+                    </Picker>
+                  )}
+                </>
+              )}
+            </View>
+          )}
+
+          {/* User Selection */}
+          {(selectedGroup || groups.length === 1) && (
+            <View style={styles.userListContainer}>
+              <Text style={styles.sectionTitle}>Select Users:</Text>
+              {users && users.length > 0 ? (
+                <>
+                  <Text>Number of users: {users.length}</Text>
+                  <FlatList
+                    data={users}
+                    renderItem={({ item }) => {
+                      Logger.log(
+                        `Rendering user item: ${JSON.stringify(item)}`
+                      );
+                      return (
+                        <UserItem
+                          user={item}
+                          isSelected={selectedUsers.some(
+                            (u) => u.userId === item.userId
+                          )}
+                          onSelect={handleUserSelect}
+                        />
+                      );
+                    }}
+                    keyExtractor={(item) => item.userId}
                   />
-                ))}
-              </Picker>
+                </>
+              ) : (
+                <Text>No users found in this group</Text>
+              )}
+            </View>
+          )}
+
+          <View>
+            <Text>Reminder Date</Text>
+            {showDatePicker && (
+              <DateTimePicker
+                mode="date"
+                display="spinner"
+                value={date}
+                onChange={onchangeDate}
+                style={{ width: "100%", marginVertical: 10 }}
+              />
             )}
 
-            {/* User Picker Button */}
-            <TouchableOpacity
-              onPress={toggleUserPicker}
-              style={styles.pickerButton}
-              disabled={!selectedGroup}
-            >
-              <Text style={styles.pickerText}>
-                {selectedUsers.length > 0
-                  ? `Selected ${selectedUsers.length} user(s): ${selectedUsers
-                      .map((u) => u.userName)
-                      .join(", ")}`
-                  : "Select users"}
-              </Text>
-            </TouchableOpacity>
-            {/* User Picker */}
-            {showUserPicker && (
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue=""
-                  onValueChange={(itemValue) => handleUserSelect(itemValue)}
-                  style={styles.picker}
-                  mode="dropdown"
-                >
-                  <Picker.Item label="Select user" value="" />
-                  {users.map((user) => (
-                    <Picker.Item
-                      key={user.userId}
-                      label={user.userName}
-                      value={JSON.stringify(user)}
-                    />
-                  ))}
-                </Picker>
-                {/* Confirmation Dialog for Users */}
-                <View style={styles.confirmationButtons}>
-                  <TouchableOpacity onPress={cancelUserSelection}>
-                    <Text>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={confirmUserSelection}>
-                    <Text>Confirm</Text>
-                  </TouchableOpacity>
-                </View>
+            {showDatePicker && Platform.OS === "ios" && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-around",
+                }}
+              >
+                <TouchableOpacity onPress={toggleDatePicker}>
+                  <Text>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmIosDate}>
+                  <Text>Confirm</Text>
+                </TouchableOpacity>
               </View>
             )}
 
-            <View>
-              <Text>Reminder Date</Text>
-              {showDatePicker && (
-                <DateTimePicker
-                  mode="date"
-                  display="spinner"
-                  value={date}
-                  onChange={onchangeDate}
-                  style={{ width: "100%", marginVertical: 10 }}
+            {!showDatePicker && (
+              <Pressable onPress={toggleDatePicker}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Select Date"
+                  value={reminderDate}
+                  editable={false}
+                  onChangeText={setReminderDate}
+                  onPressIn={toggleDatePicker}
                 />
-              )}
+              </Pressable>
+            )}
+          </View>
 
-              {showDatePicker && Platform.OS === "ios" && (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-around",
-                  }}
-                >
-                  <TouchableOpacity onPress={toggleDatePicker}>
-                    <Text>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={confirmIosDate}>
-                    <Text>Confirm</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+          <View>
+            <Text>Reminder Time</Text>
+            {showTimePicker && (
+              <DateTimePicker
+                mode="time"
+                display="spinner"
+                value={time}
+                onChange={onchangeTime}
+                style={{ width: "100%", marginVertical: 10 }}
+              />
+            )}
 
-              {!showDatePicker && (
-                <Pressable onPress={toggleDatePicker}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Select Date"
-                    value={reminderDate}
-                    editable={false}
-                    onChangeText={setReminderDate}
-                    onPressIn={toggleDatePicker}
-                  />
-                </Pressable>
-              )}
-            </View>
+            {showTimePicker && Platform.OS === "ios" && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-around",
+                }}
+              >
+                <TouchableOpacity onPress={toggleTimePicker}>
+                  <Text>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmIosTime}>
+                  <Text>Confirm</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-            <View>
-              <Text>Reminder Time</Text>
-              {showTimePicker && (
-                <DateTimePicker
-                  mode="time"
-                  display="spinner"
-                  value={time}
-                  onChange={onchangeTime}
-                  style={{ width: "100%", marginVertical: 10 }}
+            {!showTimePicker && (
+              <Pressable onPress={toggleTimePicker}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Select Time"
+                  value={reminderTime}
+                  editable={false}
+                  onChangeText={setReminderTime}
+                  onPressIn={toggleTimePicker}
                 />
-              )}
+              </Pressable>
+            )}
+          </View>
 
-              {showTimePicker && Platform.OS === "ios" && (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-around",
-                  }}
-                >
-                  <TouchableOpacity onPress={toggleTimePicker}>
-                    <Text>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={confirmIosTime}>
-                    <Text>Confirm</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+          <TextInput
+            style={styles.reminderInput}
+            placeholder="Reminder Message"
+            value={reminderMessage}
+            onChangeText={setReminderMessage}
+          />
 
-              {!showTimePicker && (
-                <Pressable onPress={toggleTimePicker}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Select Time"
-                    value={reminderTime}
-                    editable={false}
-                    onChangeText={setReminderTime}
-                    onPressIn={toggleTimePicker}
-                  />
-                </Pressable>
-              )}
-            </View>
-
-            <TextInput
-              style={styles.reminderInput}
-              placeholder="Reminder Message"
-              value={reminderMessage}
-              onChangeText={setReminderMessage}
-            />
-
-            <Button title="Send Reminder" onPress={handleSendReminder} />
-          </>
-        )}
-      </View>
+          <Button title="Send Reminder" onPress={handleSendReminder} />
+        </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -519,5 +589,47 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-around",
     padding: 10,
+  },
+  groupSection: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 10,
+  },
+  groupName: {
+    fontSize: 16,
+    color: "#333",
+  },
+  userListContainer: {
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 5,
+    padding: 10,
+    maxHeight: 200, // Add this line to limit the height and make it scrollable
+  },
+  userItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#ccc",
+  },
+  scrollViewContent: {
+    flexGrow: 1,
+  },
+  noGroupsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  noGroupsText: {
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: 'center',
   },
 });
